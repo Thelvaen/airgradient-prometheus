@@ -14,6 +14,7 @@
 #include "SSD1306Wire.h"
 
 #include <EEPROM.h>
+
 #include <ArduinoJson.h>
 
 AirGradient ag = AirGradient();
@@ -21,7 +22,7 @@ AirGradient ag = AirGradient();
 // Config ----------------------------------------------------------------------
 
 // Optional.
-const char *deviceId = "";
+const char *deviceId = ""; // Change to what you want (must be single word)
 
 // Hardware options for AirGradient DIY sensor.
 const bool hasPM = true;
@@ -34,8 +35,11 @@ const char *ssid = "PleaseChangeMe";
 const char *password = "PleaseChangeMe";
 const int port = 9926;
 
+// Max Temp offset
+#define MAX_TEMP_OFFSET 5
+
 // Uncomment the line below to configure a static IP address.
-// #define STATIC_IP
+#define STATIC_IP
 #ifdef STATIC_IP
 IPAddress staticIp(192, 168, 0, 0);
 IPAddress gateway(192, 168, 0, 0);
@@ -43,10 +47,7 @@ IPAddress subnet(255, 255, 255, 0);
 #endif
 
 // Uncomment to flip the display 180 degrees.
-#define FLIP_SCREEN
-
-// Max Temp offset
-#define MAX_TEMP_OFFSET 5
+//#define FLIP_SCREEN
 
 // The frequency of measurement updates.
 const int updateFrequency = 5000;
@@ -56,6 +57,8 @@ long lastUpdate;
 int counter = 0;
 
 // Config End ------------------------------------------------------------------
+
+char charMac[17];
 
 SSD1306Wire display(0x3c, SDA, SCL);
 ESP8266WebServer server(port);
@@ -79,18 +82,21 @@ void setup()
   EEPROM.get(0, permanentSettings);
   if (abs(permanentSettings.temperatureOffset) > MAX_TEMP_OFFSET)
   {
+    Serial.println("Valeur incorrecte, écriture de 0.0");
     // Offset > +/- MAX_TEMP_OFFSET°C we consider it has not been initialized yet
-    // Initializing to 0 & storing it to EEPROM
-    permanentSettings.temperatureOffset = 0;
+    // Initializing to 0.0 & storing it to EEPROM
+    permanentSettings.temperatureOffset = 0.0;
     EEPROM.put(0, permanentSettings);
     EEPROM.commit();
   }
 
   // Init Display.
   display.init();
+
 #ifdef FLIP_SCREEN
   display.flipScreenVertically();
 #endif
+
   showTextRectangle("Init", String(ESP.getChipId(), HEX), true);
 
   // Enable enabled sensors.
@@ -139,13 +145,12 @@ void setup()
   Serial.println(WiFi.localIP());
   Serial.print("MAC address: ");
   Serial.println(WiFi.macAddress());
+  WiFi.macAddress().toCharArray(charMac, sizeof(charMac) + 1);
   Serial.print("Hostname: ");
   Serial.println(WiFi.hostname());
   server.on("/", HandleRoot);
   server.on("/metrics", HandleRoot);
-  server.on("/offset", HTTP_GET, GetOffset);
-  server.on("/offset", HTTP_PUT, SetOffset);
-
+  server.on("/offset", HandleOffset);
   server.onNotFound(HandleNotFound);
 
   server.begin();
@@ -159,32 +164,6 @@ void loop()
 
   server.handleClient();
   updateScreen(t);
-}
-
-void SetOffset()
-{
-  StaticJsonDocument<128> jsonBody;
-
-  if (deserializeJson(jsonBody, server.arg("plain")) != DeserializationError::Ok)
-  {
-    //Serial.println("error in parsin json body");
-    server.send(400);
-    return;
-  }
-  if (true) // We might want to include some control on the MacAddress and/or DeviceName here
-  {
-    permanentSettings.temperatureOffset = jsonBody['Offset'];
-    EEPROM.put(0, permanentSettings);
-    EEPROM.commit();
-  }
-}
-
-void GetOffset()
-{
-  String message = "";
-  message += "Current Temperature Offset is: ";
-  message += String(permanentSettings.temperatureOffset);
-  server.send(200, "text/plain", message);
 }
 
 String GenerateMetrics()
@@ -289,6 +268,47 @@ void HandleNotFound()
   server.send(404, "text/html", message);
 }
 
+void HandleOffset()
+{
+  if ((server.method() == HTTP_PUT))
+  {
+    String postBody = server.arg("plain");
+
+    DynamicJsonDocument doc(512);
+    DeserializationError error = deserializeJson(doc, postBody);
+    if (error)
+    {
+      // if the file didn't open, print an error:
+      String msg = error.c_str();
+
+      server.send(400, F("text/html"),
+                  "Error in parsin json body! <br>" + msg);
+    }
+    else
+    {
+      if (strcasecmp(doc["MAC"], charMac) == 0) // We might want to include some control on the MacAddress and/or DeviceName here
+      {
+        permanentSettings.temperatureOffset = doc["Offset"].as<float>();
+        EEPROM.put(0, permanentSettings);
+        EEPROM.commit();
+        server.send(200, F("text/hml"), "Offset updated!");
+      }
+      else
+      {
+        server.send(400, F("text/html"),
+                    "Error MAC is incorrect! <br>");
+      }
+    }
+  }
+  if ((server.method() == HTTP_GET))
+  {
+    String message = "";
+    message += "Current Temperature Offset is: ";
+    message += String(permanentSettings.temperatureOffset);
+    server.send(200, "text/plain", message);
+  }
+}
+
 // DISPLAY
 void showTextRectangle(String ln1, String ln2, boolean small)
 {
@@ -296,7 +316,7 @@ void showTextRectangle(String ln1, String ln2, boolean small)
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   if (small)
   {
-    display.setFont(ArialMT_Plain_16);
+    display.setFont(ArialMT_Plain_10);
   }
   else
   {
@@ -323,40 +343,40 @@ void updateScreen(long now)
       if (hasPM)
       {
         int stat = ag.getPM2_Raw();
-        showTextRectangle("Particules 2.5", String(stat), true);
+        showTextRectangle("PM2.5", String(stat), false);
       }
       break;
     case 1:
       if (hasCO2)
       {
         int stat = ag.getCO2_Raw();
-        showTextRectangle("CO2", String(stat), false);
+        showTextRectangle("CO²", String(stat), false);
       }
       break;
     case 2:
       if (hasSHT)
       {
         TMP_RH stat = ag.periodicFetchData();
-        showTextRectangle("Température", String(stat.t + permanentSettings.temperatureOffset, 1) + "C", true);
+        showTextRectangle("TEMP", String(stat.t + permanentSettings.temperatureOffset, 1) + "C", false);
       }
       if (hasBME)
       {
         sensors_event_t temp_event;
         bme_temp->getEvent(&temp_event);
-        showTextRectangle("Température", String(temp_event.temperature + permanentSettings.temperatureOffset, 1) + "C", true);
+        showTextRectangle("TEMP", String(temp_event.temperature + permanentSettings.temperatureOffset, 1) + "C", false);
       }
       break;
     case 3:
       if (hasSHT)
       {
         TMP_RH stat = ag.periodicFetchData();
-        showTextRectangle("Humidité", String(stat.rh) + "%", true);
+        showTextRectangle("HUM", String(stat.rh) + "%", false);
       }
       if (hasBME)
       {
         sensors_event_t humidity_event;
         bme_humidity->getEvent(&humidity_event);
-        showTextRectangle("Humidité", String(humidity_event.relative_humidity, 1) + "%", true);
+        showTextRectangle("HUM", String(humidity_event.relative_humidity, 1) + "%", false);
       }
       break;
     case 4:
@@ -364,12 +384,12 @@ void updateScreen(long now)
       {
         sensors_event_t pressure_event;
         bme_pressure->getEvent(&pressure_event);
-        showTextRectangle("Pression", String(pressure_event.pressure, 1) + "hPa", true);
+        showTextRectangle("PRESSURE", String(pressure_event.pressure, 1) + "hPa", true);
       }
       break;
     }
     counter++;
-    if (counter > 4)
+    if (counter > 5)
       counter = 0;
     lastUpdate = millis();
   }
