@@ -42,7 +42,7 @@ jobs:
 
       - name: Install ArduinoJson
         run: |
-          arduino-cli lib install "ArduinoJson@6.19.0"
+          arduino-cli lib install "ArduinoJson"
           
       - name: Compile Sketch
         run: arduino-cli compile --fqbn esp8266:esp8266:d1_mini ./AirGradient-DIY

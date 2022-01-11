@@ -163,11 +163,9 @@ void loop()
 
 void SetOffset()
 {
-  StaticJsonBuffer<500> jsonBuffer;
+  StaticJsonDocument<128> jsonBody;
 
-  JsonObject &jsonBody = jsonBuffer.parseObject(server.arg("plain"));
-
-  if (!jsonBody.success())
+  if (deserializeJson(jsonBody, server.arg("plain")) != DeserializationError::Ok)
   {
     //Serial.println("error in parsin json body");
     server.send(400);
