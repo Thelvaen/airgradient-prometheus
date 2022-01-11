@@ -40,6 +40,13 @@ atmp{id="Airgradient"}31.6
 rhum{id="Airgradient"}38
 ```
 
+If you have a BME280 sensor instead of the SHT30/SHT31, you will also see the additionnal bloc:
+```sh
+# HELP apre Athmospherique pressure, in hPa
+# TYPE apre gauge
+apre{id="",mac="xx:xx:xx:xx:xx:xx"}1021.24
+```
+
 Once you've verified it's working, configure Prometheus to scrape the sensor's endpoint: `http://sensor-ip:9926/metrics`.
 
 Example job configuration in `prometheus.yml`:
@@ -55,7 +62,7 @@ scrape_configs:
 
 ### Static IP address
 
-You can configure a static IP address for the sensor by uncommenting the `#define staticip` line and entering your own IP information in the following lines.
+You can configure a static IP address for the sensor by uncommenting the `#define STATIC_IP` line and entering your own IP information in the following lines.
 
 ## License
 
@@ -65,3 +72,4 @@ MIT.
 
   - [Jeff Geerling](https://www.jeffgeerling.com)
   - [Jordan Jones](https://github.com/kashalls)
+  - [Thelvaen Mandel](https://github.com/Thelvaen)
