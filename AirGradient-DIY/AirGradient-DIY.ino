@@ -107,7 +107,10 @@ void setup()
   if (hasSHT)
     ag.TMP_RH_Init(0x44);
   if (hasBME)
-    bme.begin();
+    status = bme.begin();
+    if (!status) {
+      Serial.println("Could not find a valid BME280 sensor, check wiring!");
+      while (1);
 
 // Set static IP address if configured.
 #ifdef STATIC_IP
